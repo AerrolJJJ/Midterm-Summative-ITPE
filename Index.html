@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Water Billing Statement</title>
+    <meta name="description"
+        content="A minimalist Water Billing Statement System — compute customer water bills based on consumption and classification." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <style>
+        :root {
+            --bg:        #F9F9F8;
+            --surface:   #FFFFFF;
+            --border:    rgba(0,0,0,.08);
+            --border-md: rgba(0,0,0,.12);
+            --text:      #0A0A0A;
+            --muted:     #888;
+            --faint:     #C4C4C4;
+            --accent:    #0A0A0A;
+            --blue:      #2563EB;
+            --green:     #059669;
+            --red:       #DC2626;
+            --r-sm:      6px;
+            --r-md:      12px;
+            --r-lg:      20px;
+            --ease:      cubic-bezier(.22,1,.36,1);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Geist', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Ambient grain overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 9999;
+            opacity: .4;
+        }
+
+        /* Top Bar */
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            height: 56px;
+            background: rgba(249,249,248,.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbar-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .topbar-icon svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: #fff;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .topbar-name {
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: -.01em;
+        }
+
+        .topbar-meta {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: .02em;
+        }
+
+        /* Main layout */
+        .main {
+            display: flex;
+            justify-content: center;
+            padding: 64px 16px 100px;
+        }
+
+        .content-col {
+            width: 100%;
+            max-width: 440px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .eyebrow {
+            font-family: 'Geist Mono', monospace;
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            color: var(--muted);
+            padding: 0 2px;
+            margin-bottom: 4px;
+        }
+
+        /* Hero */
+        .hero { margin-bottom: 40px; }
+
+        .hero h1 {
+            font-size: clamp(2rem, 5vw, 2.8rem);
+            font-weight: 300;
+            letter-spacing: -.04em;
+            line-height: 1.1;
+            color: var(--text);
+        }
+
+        .hero h1 em {
+            font-style: normal;
+            font-weight: 600;
+        }
+
+        .hero-sub {
+            margin-top: 10px;
+            font-size: 13px;
+            color: var(--muted);
+            letter-spacing: -.01em;
+            line-height: 1.5;
+        }
+
+        /* Panel */
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r-lg);
+            padding: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent);
+        }
+
+        /* Fields */
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field label {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .field-input-wrap { position: relative; }
+
+        .field input,
+        .field select {
+            width: 100%;
+            padding: 11px 14px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text);
+            background: var(--bg);
+            border: 1px solid var(--border-md);
+            border-radius: var(--r-md);
+            outline: none;
+            transition: border-color .2s var(--ease), box-shadow .2s var(--ease), background .2s;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .field input:focus,
+        .field select:focus {
+            background: var(--surface);
+            border-color: var(--text);
+            box-shadow: 0 0 0 3px rgba(10,10,10,.06);
+        }
+
+        .field input::placeholder { color: var(--faint); }
+
+        /* Select arrow */
+        .select-arrow::after {
+            content: '';
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid var(--muted);
+            pointer-events: none;
+        }
+
+        /* Error */
+        .err {
+            font-size: 11px;
+            color: var(--red);
+            display: none;
+            align-items: center;
+            gap: 4px;
+        }
+        .err.show { display: flex; }
+
+        /* Divider */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 24px 0;
+        }
+
+        /* Generate Button */
+        .btn-generate {
+            width: 100%;
+            height: 46px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: .01em;
+            color: #fff;
+            background: var(--text);
+            border: none;
+            border-radius: var(--r-md);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: opacity .2s var(--ease), transform .15s var(--ease);
+        }
+
+        .btn-generate::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,.1) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .btn-generate:hover { opacity: .85; }
+        .btn-generate:active { transform: scale(.98); }
+
+        /* Ripple */
+        .ripple {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255,255,255,.25);
+            transform: scale(0);
+            animation: ripple-anim .5s linear;
+            pointer-events: none;
+        }
+
+        @keyframes ripple-anim {
+            to { transform: scale(4); opacity: 0; }
+        }
+
+        /* Footer row */
+        .footer-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+
+        .tx-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .tx-pill-count {
+            font-family: 'Geist Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text);
+            background: #F0F0EE;
+            border: 1px solid var(--border-md);
+            border-radius: 20px;
+            padding: 2px 9px;
+            transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+            display: inline-block;
+        }
+
+        .tx-pill-count.bump { transform: scale(1.3); }
+
+        /* Status */
+        .status {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 5px 10px;
+            border-radius: 20px;
+            display: none;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status.show    { display: inline-flex; }
+        .status.sending { background: #EFF6FF; color: var(--blue); }
+        .status.sent    { background: #ECFDF5; color: var(--green); }
+        .status.failed  { background: #FEF2F2; color: var(--red); }
+
+        /* Bill Output */
+        #billOutput {
+            display: none;
+            opacity: 0;
+            transform: translateY(12px) scale(.99);
+            transition: opacity .4s var(--ease), transform .4s var(--ease);
+            margin-top: 8px;
+        }
+
+        #billOutput.visible {
+            display: block;
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        .bill-eyebrow {
+            font-family: 'Geist Mono', monospace;
+            font-size: 10px;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .bill-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 28px;
+        }
+
+        .bill-title-text {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -.03em;
+        }
+
+        .bill-date-text {
+            font-family: 'Geist Mono', monospace;
+            font-size: 10.5px;
+            color: var(--muted);
+            text-align: right;
+            line-height: 1.6;
+        }
+
+        /* Bill sections */
+        .bill-section { margin-bottom: 20px; }
+
+        .bill-section-label {
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--faint);
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .bill-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+
+        .bill-row-label { color: var(--muted); }
+
+        .bill-row-val {
+            font-family: 'Geist Mono', monospace;
+            font-size: 12.5px;
+            color: var(--text);
+        }
+
+        .bill-row.discount .bill-row-label,
+        .bill-row.discount .bill-row-val { color: var(--green); }
+
+        /* Total Strip */
+        .total-strip {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--text);
+            color: #fff;
+            border-radius: var(--r-md);
+            padding: 16px 20px;
+            margin-top: 8px;
+        }
+
+        .total-label {
+            font-size: 12px;
+            font-weight: 500;
+            opacity: .65;
+            letter-spacing: .01em;
+        }
+
+        .total-amount {
+            font-family: 'Geist Mono', monospace;
+            font-size: 22px;
+            font-weight: 500;
+            letter-spacing: -.02em;
+        }
+
+        /* Print button */
+        .bill-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        .btn-print {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--muted);
+            background: none;
+            border: 1px solid var(--border-md);
+            border-radius: 20px;
+            padding: 5px 14px;
+            cursor: pointer;
+            transition: color .2s, border-color .2s, background .2s;
+        }
+
+        .btn-print:hover {
+            color: var(--text);
+            border-color: var(--text);
+            background: var(--bg);
+        }
+
+        /* Pulse on new bill */
+        @keyframes pulse-border {
+            0%   { box-shadow: 0 0 0 0 rgba(10,10,10,.15); }
+            70%  { box-shadow: 0 0 0 8px rgba(10,10,10,0); }
+            100% { box-shadow: 0 0 0 0 rgba(10,10,10,0); }
+        }
+
+        .pulse { animation: pulse-border .5s ease-out; }
+
+        @media (max-width: 500px) {
+            .topbar { padding: 0 20px; }
+            .main { padding: 40px 12px 80px; }
+            .panel { padding: 24px 20px; }
+            .hero h1 { font-size: 1.75rem; }
+        }
+
+        @media print {
+            .topbar, #formPanel, .hero, .btn-print { display: none !important; }
+            body { background: #fff; }
+            #billOutput { display: block !important; opacity: 1 !important; transform: none !important; }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="topbar">
+        <div class="topbar-brand">
+            <span class="topbar-name">Water Billing</span>
+        </div>
+        <span class="topbar-meta">DLSU-D &middot; CICS / IT</span>
+    </div>
+
+    <div class="main">
+        <div class="content-col">
+
+            <div class="hero">
+                <p class="eyebrow">Billing Statement System</p>
+                <h1><em>Water</em><br>Bill<br>Generator</h1>
+                <p class="hero-sub">Midterm Summative Assessment 1 &nbsp;&middot;&nbsp; AY 2025-2026</p>
+            </div>
+
+            <div class="panel" id="formPanel">
+                <div class="field-group">
+
+                    <div class="field">
+                        <label for="customerName">Customer Name</label>
+                        <div class="field-input-wrap">
+                            <input type="text" id="customerName" placeholder="e.g. Aerrol John Jimenez" autocomplete="off" />
+                        </div>
+                        <span class="err" id="nameError">Name is required</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="consumption">Consumption (m&sup3;)</label>
+                        <div class="field-input-wrap">
+                            <input type="number" id="consumption" placeholder="e.g. 25" min="1" autocomplete="off" />
+                        </div>
+                        <span class="err" id="consumptionError">Enter a valid value &ge; 1</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="customerType">Customer Type</label>
+                        <div class="field-input-wrap select-arrow">
+                            <select id="customerType">
+                                <option value="">- Select type -</option>
+                                <option value="Regular">Regular</option>
+                                <option value="Senior Citizen">Senior Citizen</option>
+                                <option value="Solo Parent">Solo Parent</option>
+                            </select>
+                        </div>
+                        <span class="err" id="typeError">Please select a customer type</span>
+                    </div>
+
+                </div>
+
+                <div class="divider"></div>
+
+                <button class="btn-generate" id="generateBtn" onclick="generateBill()">
+                    Generate Statement
+                </button>
+
+                <div class="footer-row">
+                    <div class="tx-pill">
+                        <span>Processed</span>
+                        <span class="tx-pill-count" id="txCounter">0</span>
+                        <span>transactions</span>
+                    </div>
+                    <span class="status" id="statusMsg"></span>
+                </div>
+            </div>
+
+            <div class="panel" id="billOutput" aria-label="Billing Statement" aria-live="polite">
+                <div class="bill-meta-row">
+                    <div>
+                        <p class="bill-eyebrow">Local Water District</p>
+                        <p class="bill-title-text">Official Statement</p>
+                    </div>
+                    <div class="bill-date-text" id="billDate"></div>
+                </div>
+
+                <div class="bill-section">
+                    <p class="bill-section-label">Customer Details</p>
+                    <div id="detailRows"></div>
+                </div>
+
+                <div class="bill-section">
+                    <p class="bill-section-label">Billing Breakdown</p>
+                    <div id="breakdownRows"></div>
+                </div>
+
+                <div class="total-strip">
+                    <span class="total-label">Total Amount Due</span>
+                    <span class="total-amount" id="totalAmount">0.00</span>
+                </div>
+
+                <div class="bill-actions">
+                    <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHZiLqitgP97JoIFHkTdcYK7rAQy7pmYiBF4GdoCB8Q9nRtsTXhldGY0L4jYwMn0iD/exec';
+        let transactionCount = 0;
+
+        function getRate(c) {
+            if (c <= 20) return 25;
+            if (c <= 40) return 35;
+            if (c <= 60) return 45;
+            return 60;
+        }
+
+        function getDiscount(type) {
+            switch (type) {
+                case 'Senior Citizen': return 0.25;
+                case 'Solo Parent':   return 0.15;
+                default:              return 0;
+            }
+        }
+
+        function validate(name, consumption, type) {
+            let ok = true;
+            ['nameError', 'consumptionError', 'typeError'].forEach(id =>
+                document.getElementById(id).classList.remove('show')
+            );
+            if (!name.trim()) { document.getElementById('nameError').classList.add('show'); ok = false; }
+            if (isNaN(consumption) || consumption < 1) { document.getElementById('consumptionError').classList.add('show'); ok = false; }
+            if (!type) { document.getElementById('typeError').classList.add('show'); ok = false; }
+            return ok;
+        }
+
+        function makeRow(label, value, cls) {
+            cls = cls || '';
+            return '<div class="bill-row ' + cls + '">' +
+                '<span class="bill-row-label">' + label + '</span>' +
+                '<span class="bill-row-val">' + (cls === 'discount' ? '\u2212 ' : '') + value + '</span>' +
+                '</div>';
+        }
+
+        // buildBillRows — uses for loops to render both bill sections (rubric requirement)
+        function buildBillRows(name, consumption, type, rate, base, discountRate, discountAmount, total) {
+
+            // ── Customer Details (for loop) ───────────────────────────────
+            var infoItems = [
+                { label: 'Customer Name', value: name },
+                { label: 'Customer Type', value: type },
+                { label: 'Consumption',   value: consumption + ' m\u00B3' },
+                { label: 'Rate Applied',  value: '\u20B1' + rate.toFixed(2) + ' / m\u00B3' }
+            ];
+
+            var detailHTML = '';
+            for (var i = 0; i < infoItems.length; i++) {
+                detailHTML += makeRow(infoItems[i].label, infoItems[i].value);
+            }
+            document.getElementById('detailRows').innerHTML = detailHTML;
+
+            // ── Billing Breakdown (for loop) ──────────────────────────────
+            var breakdownItems = [
+                { label: 'Base (' + consumption + ' \u00D7 \u20B1' + rate.toFixed(2) + ')',
+                  value: '\u20B1' + base.toFixed(2), cls: '' }
+            ];
+
+            if (discountRate > 0) {
+                breakdownItems.push({
+                    label: (discountRate * 100).toFixed(0) + '% Discount (' + type + ')',
+                    value: '\u20B1' + discountAmount.toFixed(2),
+                    cls: 'discount'
+                });
+            }
+
+            var breakdownHTML = '';
+            for (var j = 0; j < breakdownItems.length; j++) {
+                breakdownHTML += makeRow(breakdownItems[j].label, breakdownItems[j].value, breakdownItems[j].cls);
+            }
+            document.getElementById('breakdownRows').innerHTML = breakdownHTML;
+
+            // ── Total ─────────────────────────────────────────────────────
+            document.getElementById('totalAmount').textContent = '\u20B1' + total.toFixed(2);
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', function(e) {
+            var btn = this;
+            var r = btn.getBoundingClientRect();
+            var size = Math.max(r.width, r.height);
+            var span = document.createElement('span');
+            span.className = 'ripple';
+            span.style.cssText = 'width:' + size + 'px;height:' + size + 'px;left:' + (e.clientX - r.left - size/2) + 'px;top:' + (e.clientY - r.top - size/2) + 'px';
+            btn.appendChild(span);
+            setTimeout(function() { span.remove(); }, 600);
+        });
+
+        function generateBill() {
+            var name        = document.getElementById('customerName').value;
+            var consumption = parseFloat(document.getElementById('consumption').value);
+            var type        = document.getElementById('customerType').value;
+
+            if (!validate(name, consumption, type)) return;
+
+            var rate           = getRate(consumption);
+            var base           = consumption * rate;
+            var discountRate   = getDiscount(type);
+            var discountAmount = base * discountRate;
+            var total          = base - discountAmount;
+
+            var now = new Date();
+            var dateLine = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+            var timeLine = now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+            document.getElementById('billDate').innerHTML = dateLine + '<br>' + timeLine;
+
+            buildBillRows(name, consumption, type, rate, base, discountRate, discountAmount, total);
+
+            var billOutput = document.getElementById('billOutput');
+            billOutput.style.display = 'block';
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    billOutput.classList.add('visible');
+                    billOutput.classList.remove('pulse');
+                    void billOutput.offsetWidth;
+                    billOutput.classList.add('pulse');
+                });
+            });
+            billOutput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            transactionCount++;
+            var badge = document.getElementById('txCounter');
+            badge.textContent = transactionCount;
+            badge.classList.remove('bump');
+            void badge.offsetWidth;
+            badge.classList.add('bump');
+            setTimeout(function() { badge.classList.remove('bump'); }, 350);
+
+            sendToSheet(name, consumption, type, base, discountAmount, total);
+        }
+
+        function sendToSheet(name, consumption, type, base, discount, total) {
+            var el = document.getElementById('statusMsg');
+            el.className = 'status show sending';
+            el.textContent = 'Saving...';
+
+            var body = new URLSearchParams({
+                customerName: name,
+                consumption: consumption,
+                customerType: type,
+                baseAmount:  base.toFixed(2),
+                discount:    discount.toFixed(2),
+                totalAmount: total.toFixed(2)
+            });
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString()
+            })
+            .then(function(r) { return r.text(); })
+            .then(function(t) {
+                if (t.includes('Success')) {
+                    el.className = 'status show sent';
+                    el.textContent = '\u2713 Saved';
+                } else {
+                    el.className = 'status show failed';
+                    el.textContent = '\u26A0 Sync failed';
+                }
+            })
+            .catch(function() {
+                el.className = 'status show failed';
+                el.textContent = '\u26A0 No connection';
+            });
+        }
+    </script>
+
+</body>
+</html>
